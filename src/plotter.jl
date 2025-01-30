@@ -98,29 +98,10 @@ function calculate_staggered_magnetization(mags)
     return staggered_magnetization, ts, Nx, Ny
 end
 
-function plot_staggered_magnetization(experiment_path)
-    csv_data = CSV.File(joinpath(experiment_path, "density.csv"), header=false)
-    df = DataFrame(csv_data)
-    mags = Matrix{Float64}(df)
+function variance_staggered_magnetization(mags, flattened_corr)
     staggered_magnetization, ts, Nx, Ny = calculate_staggered_magnetization(mags)
+    var_stag_mag = -(staggered_magnetization .^ 2)
 
-    fig, ax, plt = lines(ts, staggered_magnetization, axis=(;title = "Staggered magnetization: <Sz_i(T)>", xlabel = "time step, t_j", ylabel="staggered magnetization, <Sz_i(T)>"))
-    fig_path = joinpath(experiment_path, "staggered_magnetization.png")
-    save(fig_path, fig)
-end
-
-function plot_variance_staggered_magnetization(experiment_path)
-    # Get density data for staggered magnetization
-    csv_data = CSV.File(joinpath(experiment_path, "density.csv"), header=false)
-    df = DataFrame(csv_data)
-    mags = Matrix{Float64}(df)
-    staggered_magnetization, ts, Nx, Ny = calculate_staggered_magnetization(mags)
-    variance_staggered_magnetization = -(staggered_magnetization .^ 2)
-
-    # Get correlator data and reconstruct 3D array
-    csv_data = CSV.File(joinpath(experiment_path, "correlator_zz_timeseries.csv"), header=false)
-    df = DataFrame(csv_data)
-    flattened_corr = Matrix{Float64}(df)
     n_timesteps = size(flattened_corr, 1)
     n_atoms = Int(sqrt(size(flattened_corr, 2)))  # Since it's n_atoms * n_atoms columns
     
@@ -129,8 +110,7 @@ function plot_variance_staggered_magnetization(experiment_path)
     for t in 1:n_timesteps
         corr_zz_3d[t, :, :] = reshape(flattened_corr[t, :], (n_atoms, n_atoms))
     end
-    
-    # Calculate variance using the correlator matrices at each timestep
+
     for t in 1:n_timesteps
         sum_corr = 0.0
         for j in 1:Nx
@@ -145,11 +125,38 @@ function plot_variance_staggered_magnetization(experiment_path)
                 end
             end
         end
-        variance_staggered_magnetization[t] += sum_corr
+        var_stag_mag[t] += sum_corr
     end
+    var_stag_mag ./= (Nx*Ny)
+    return var_stag_mag, ts
+end
 
-    fig, ax, plt = lines(ts, variance_staggered_magnetization ./ (Nx*Ny), axis=(;title = "Variance of staggered magnetization: <(Sz_i(t) - <Sz_i(t)>)^2>/Nx*Ny", xlabel = "time step, t_j", ylabel="variance of staggered magnetization"))
+function plot_variance_staggered_magnetization(experiment_path)
+    # Get density data for staggered magnetization
+    csv_data = CSV.File(joinpath(experiment_path, "density.csv"), header=false)
+    df = DataFrame(csv_data)
+    mags = Matrix{Float64}(df)
+
+    # Get correlator data and reconstruct 3D array
+    csv_data = CSV.File(joinpath(experiment_path, "correlator_zz_timeseries.csv"), header=false)
+    df = DataFrame(csv_data)
+    flattened_corr = Matrix{Float64}(df)
+
+    var_stag_mag, ts = variance_staggered_magnetization(mags, flattened_corr)
+    
+    fig, ax, plt = lines(ts, var_stag_mag, axis=(;title = "Variance of staggered magnetization: <(Sz_i(t) - <Sz_i(t)>)^2>/Nx*Ny", xlabel = "time step, t_j", ylabel="variance of staggered magnetization"))
     fig_path = joinpath(experiment_path, "variance_staggered_magnetization.png")
+    save(fig_path, fig)
+end
+
+function plot_staggered_magnetization(experiment_path)
+    csv_data = CSV.File(joinpath(experiment_path, "density.csv"), header=false)
+    df = DataFrame(csv_data)
+    mags = Matrix{Float64}(df)
+    staggered_magnetization, ts, Nx, Ny = calculate_staggered_magnetization(mags)
+
+    fig, ax, plt = lines(ts, staggered_magnetization, axis=(;title = "Staggered magnetization: <Sz_i(T)>", xlabel = "time step, t_j", ylabel="staggered magnetization, <Sz_i(T)>"))
+    fig_path = joinpath(experiment_path, "staggered_magnetization.png")
     save(fig_path, fig)
 end
 
@@ -188,6 +195,41 @@ function plot_correlator_evolution_gif(experiment_path)
            framerate=framerate) do t
         timestamps[] = t
     end
+end
+
+function plot_many_variance_staggered_magnetization(experiment_paths)
+    fig = Figure()
+    ax = Axis(fig[1, 1], 
+              title="Variance of staggered magnetization", 
+              xlabel="time step, t_j", 
+              ylabel="variance of staggered magnetization")
+    
+    for experiment_path in experiment_paths
+        println(experiment_path)
+        csv_data = CSV.File(joinpath(experiment_path, "density.csv"), header=false)
+        df = DataFrame(csv_data)
+        mags = Matrix{Float64}(df)
+
+        # Get correlator data and reconstruct 3D array
+        csv_data = CSV.File(joinpath(experiment_path, "correlator_zz_timeseries.csv"), header=false)
+        df = DataFrame(csv_data)
+        flattened_corr = Matrix{Float64}(df)
+
+        var_stag_mag, ts = variance_staggered_magnetization(mags, flattened_corr)
+
+        # Extract the system size from the path for the legend
+        system_size = split(basename(experiment_path), "_")[2]
+        lines!(ax, ts, var_stag_mag, label="N = $system_size")
+    end
+    
+    axislegend(ax)  # Add the legend
+    
+    # Save the figure
+    filename = joinpath(dirname(first(experiment_paths)), "variance_staggered_magnetization_comparison.png")
+    println(filename)
+    save(filename, fig)
+    
+    return fig
 end
 
 function plot_all(experiment_path)

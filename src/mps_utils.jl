@@ -48,7 +48,6 @@ function piecewise_protocol(x, points, values)
 end
 
 function parse_protocol__mine(ahs_program, τ, n_τ_steps)
-    @info "Getting into PARSE PROTOCOL (RABI) with $τ and $n_τ_steps"
     # Define piecewise functions (protocols)
     time_steps = collect(0:(n_τ_steps-1)) ./ n_τ_steps 
     total_time = n_τ_steps * τ
@@ -220,14 +219,7 @@ function parse_ahs_program(ahs_json, args::Dict{String, Any}, file_name::String)
     CSV.write(joinpath(experiment_path, "atom_coordinates.csv"), DataFrame(array_2d_coords', :auto))
 
     Vij = get_Vij(atom_coordinates, N, interaction_R, C6)
-    @info "Getting into PARSE PROTOCOL (RABI) with $τ and $n_τ_steps and $ahs_json"
-    print("\n=== BEFORE calling parse_protocol ===\n")
-    flush(stdout)
     protocol = parse_protocol__mine(ahs_json, τ, n_τ_steps)
-    print("\n=== AFTER calling parse_protocol ===\n")
-    flush(stdout)
-    @info "Returned from parse_protocol with protocol=$protocol"
-    rabi_driving = protocol[:rabi_driving]
     return Vij, protocol, N
 end
 
